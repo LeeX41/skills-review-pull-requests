@@ -39,9 +39,11 @@ jobs:
       - name: AI Code Review
         env:
           CODEBUDDY_API_KEY: ${{ secrets.CODEBUDDY_API_KEY }}
+          CODEBUDDY_INTERNET_ENVIRONMENT: ${{ secrets.CODEBUDDY_INTERNET_ENVIRONMENT }}
         run: |
           # 调试：确认 Key 已注入
           echo "Key length: ${#CODEBUDDY_API_KEY}"
+          echo "Internet environment: ${CODEBUDDY_INTERNET_ENVIRONMENT}"
 
           if [ -z "$CODEBUDDY_API_KEY" ]; then
             echo "Error: CODEBUDDY_API_KEY is not set"
@@ -51,12 +53,15 @@ jobs:
           # 执行审查，输出 JSON
           cat pr_diff.txt | codebuddy -p \
             "审查代码变更，输出 JSON 格式：{issues: [{severity, file, line, description, suggestion}]}" \
-            --output-format json > raw_result.json || true
+            --model deepseek-v3-2-volc \
+            --output-format json > raw_result.json 2>&1
 
           # 提取干净的 result 字段
-          if [ -s raw_result.json ]; then
-            cat raw_result.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('result','{}'))" > review_result.json
+          if [ -s raw_result.json ] && grep -q '"result"' raw_result.json; then
+            cat raw_result.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('result','{}'))" > review_result.json
           else
+            echo '[错误] raw_result.json 内容：'
+            cat raw_result.json
             echo '{}' > review_result.json
           fi
 
